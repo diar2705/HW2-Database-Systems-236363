@@ -109,7 +109,7 @@ class DBConnector:
 
     # executes the query, if it is SELECT you may ask to print the results with printSchema
     # returns the number of rows effected and a ResultSet (for SELECT)
-    def execute(self, query: Union[str, sql.Composed], printSchema=False) -> (int, ResultSet):
+    def execute(self, query: Union[str, sql.Composed], printSchema=False) -> tuple[int, ResultSet]:
         if self.connection is None:
             raise DatabaseException.ConnectionInvalid("Connection Invalid")
 

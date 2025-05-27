@@ -6,10 +6,10 @@ from Business.Customer import Customer
 import psycopg2
 
 DB_PARAMS = { #----------------TODO----------------
-    "dbname": "",
-    "user": "",
-    "password": "",
-    "host": "",
+    "dbname": "cs236363",
+    "user": "diar2705",
+    "password": "Dododiar123",
+    "host": "localhost",
     "port": 5432
 }
 
