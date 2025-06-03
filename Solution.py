@@ -80,25 +80,66 @@ def create_tables() -> None:
         )
         
         conn.execute(
-            "CREATE VIEW totalPricePerOrder AS ( "
+            "CREATE VIEW totalPricePerOrder AS  "
             "SELECT  O.order_id AS order_id, (COALESCE(SUM(D.amount * D.price), 0) + O.delivery_fee) AS totalPrice "
-            "FROM DishOrders D RIGHT OUTER JOIN Orders O ON O.order_id = D.order_id GROUP BY O.order_id, O.delivery_fee)"
+            "FROM DishOrders D RIGHT OUTER JOIN Orders O ON O.order_id = D.order_id GROUP BY O.order_id, O.delivery_fee"
         )
 
         conn.execute(
-            "CREATE VIEW SortRatingsDesc AS ( "
+            "CREATE VIEW SortRatingsDesc AS "
             "SELECT D.dish_id, COALESCE(AVG(DR.rating),3) AS avgRating "
             "FROM Ratings DR RIGHT OUTER JOIN Dish D ON D.dish_id = DR.dish_id "
             "GROUP BY D.dish_id "
             "ORDER BY avgRating DESC, D.dish_id ASC "
-            "LIMIT 5)"
+            "LIMIT 5"
         )
 
+        conn.execute(
+            "CREATE VIEW ComparedPrices AS "
+            "SELECT DO1.dish_id, DO1.price, (AVG(DO1.amount)*DO1.price) AS avgPrice "
+            "FROM DishOrders DO1 "
+            "GROUP BY DO1.dish_id, DO1.price "
+            "HAVING DO1.price <= (SELECT D.price FROM Dishs D WHERE D.dish_id = DO1.dish_id)"
+        )
+
+        conn.execute(
+            "CREATE VIEW SimilarCustomers AS "
+            "WITH RECURSIVE AUX1(C1, C2) AS ( "
+            "    SELECT A.cust_id AS C1, B.cust_id AS C2 "
+            "    FROM Ratings AS A, Ratings AS B "
+            "    WHERE A.dish_id = B.dish_id AND A.rating > 3 AND B.rating > 3 "
+            "    UNION "
+            "    SELECT B.cust_id AS C1, AUX2.C2 AS C2 "
+            "    FROM Ratings AS A, Ratings AS B, AUX1 AS AUX2 "
+            "    WHERE A.cust_id = AUX2.C1 AND "
+            "          B.cust_id != AUX2.C1 AND "
+            "          B.cust_id != AUX2.C2 AND "
+            "          A.rating > 3 AND B.rating > 3 AND "
+            "          A.dish_id = B.dish_id "
+            ") "
+            "SELECT * FROM AUX1"
+        )
+
+
         conn.commit()
+    except DatabaseException.FOREIGN_KEY_VIOLATION as e:
+        print(e)
+    except DatabaseException.CHECK_VIOLATION as e:
+        print(e)
+    except DatabaseException.UNIQUE_VIOLATION as e:
+        print(e)
+    except DatabaseException.NOT_NULL_VIOLATION as e:
+        print(e)
+    except DatabaseException.ConnectionInvalid as e:
+        print(e)
+    except DatabaseException.database_ini_ERROR as e:
+        print(e)
+    except DatabaseException.UNKNOWN_ERROR as e:
+        print(e)
     except Exception as e:
         if conn:
             conn.rollback()
-        raise e
+        print(e)
     finally:
         if conn:
             conn.close()
@@ -108,17 +149,17 @@ def clear_tables() -> None:
     conn = None
     try:
         conn = Connector.DBConnector()
-        conn.execute("DELETE FROM CustomerOrders")
         conn.execute("DELETE FROM Ratings")
         conn.execute("DELETE FROM DishOrders")
-        conn.execute("DELETE FROM Customers")
-        conn.execute("DELETE FROM Orders")
+        conn.execute("DELETE FROM CustomerOrders")
         conn.execute("DELETE FROM Dishs")
+        conn.execute("DELETE FROM Orders")
+        conn.execute("DELETE FROM Customers")
         conn.commit()
-    except Exception as e:
+    except DatabaseException as e:
         if conn:
             conn.rollback()
-        raise e
+        print(e)
     finally:
         if conn:
             conn.close()
@@ -128,18 +169,22 @@ def drop_tables() -> None:
     conn = None
     try:
         conn = Connector.DBConnector()
+        conn.execute("DROP VIEW IF EXISTS SimilarCustomers")
+        conn.execute("DROP VIEW IF EXISTS ComparedPrices")
+        conn.execute("DROP VIEW IF EXISTS SortRatingsDesc")
         conn.execute("DROP VIEW IF EXISTS totalPricePerOrder")
-        conn.execute("DROP TABLE IF EXISTS Customers CASCADE")
-        conn.execute("DROP TABLE IF EXISTS Orders CASCADE")
-        conn.execute("DROP TABLE IF EXISTS Dishs CASCADE")
-        conn.execute("DROP TABLE IF EXISTS DishOrders CASCADE")
-        conn.execute("DROP TABLE IF EXISTS CustomerOrders CASCADE")
-        conn.execute("DROP TABLE IF EXISTS Ratings CASCADE")
+
+        conn.execute("DROP TABLE IF EXISTS Ratings")
+        conn.execute("DROP TABLE IF EXISTS DishOrders")
+        conn.execute("DROP TABLE IF EXISTS CustomerOrders")
+        conn.execute("DROP TABLE IF EXISTS Dishs")
+        conn.execute("DROP TABLE IF EXISTS Orders")
+        conn.execute("DROP TABLE IF EXISTS Customers")
         conn.commit()
     except Exception as e:
         if conn:
             conn.rollback()
-        raise e
+        print(e)
     finally:
         if conn:
             conn.close()
@@ -793,8 +838,8 @@ def did_customer_order_top_rated_dishes(cust_id: int) -> bool:
         conn = Connector.DBConnector()
         query = sql.SQL(
             "SELECT DISTINCT cust_id "
-            "FROM CustomerOrders AS CO, DishOrders AS DO, SortRatingsDesc AS SR "
-            "WHERE CO.order_id = DO.order_id AND DO.dish_id = SR.dish_id AND CO.cust_id = {c_id}"
+            "FROM CustomerOrders AS CO, DishOrders AS D, SortRatingsDesc AS SR "
+            "WHERE CO.order_id = D.order_id AND D.dish_id = SR.dish_id AND CO.cust_id = {c_id}"
         ).format(c_id=sql.Literal(cust_id))
 
         rows_affected, _ = conn.execute(query)
@@ -854,71 +899,19 @@ def get_non_worth_price_increase() -> List[int]:
     conn = None
     try:
         conn = Connector.DBConnector()
-
-        # Find dishes that had a price increase but lower order amounts afterward
         query = sql.SQL(
-            """
-            WITH PriceChanges AS (
-                SELECT
-                    o.order_id,
-                    o.date,
-                    od.dish_id,
-                    od.amount,
-                    d.price,
-                    LAG(d.price) OVER (PARTITION BY od.dish_id ORDER BY o.date) AS prev_price                FROM
-                    DishOrders od                JOIN
-                    Orders o ON od.order_id = o.order_id
-                JOIN
-                    Dishs d ON od.dish_id = d.dish_id
-            ),
-            DishPeriods AS (
-                SELECT
-                    dish_id,
-                    date,
-                    amount,
-                    price,
-                    prev_price,
-                    CASE WHEN price > prev_price THEN 1 ELSE 0 END AS price_increased
-                FROM
-                    PriceChanges
-                WHERE
-                    prev_price IS NOT NULL
-            ),
-            DishStats AS (
-                SELECT
-                    dish_id,
-                    SUM(CASE WHEN price_increased = 1 THEN 1 ELSE 0 END) AS has_price_increase,
-                    SUM(CASE WHEN price_increased = 1 THEN amount ELSE 0 END) AS amount_after_increase,
-                    SUM(CASE WHEN price_increased = 0 THEN amount ELSE 0 END) AS amount_before_increase
-                FROM
-                    DishPeriods
-                GROUP BY
-                    dish_id
-            )
-            SELECT
-                dish_id
-            FROM
-                DishStats
-            WHERE
-                has_price_increase > 0
-                AND amount_after_increase < amount_before_increase
-            ORDER BY
-                dish_id
-        """
-        )
-
-        rows_affected, result = conn.execute(query)
-
-        # If no dishes found
-        if result.isEmpty():
-            return []
-
-        # Extract dish IDs
-        dish_ids = []
+            "SELECT D.dish_id "
+            "FROM DISH D "
+            "WHERE D.is_active=true AND (D.dish_id, D.price) IN (SELECT dish_id, price FROM ComparedPrices) AND "
+            "(SELECT avgPrice FROM ComparedPrices WHERE dish_id = D.dish_id AND price = D.price) < "
+            "(SELECT MAX(avgPrice) FROM ComparedPrices WHERE dish_id = D.dish_id) AND "
+            "(SELECT COUNT(*) FROM ComparedPrices WHERE dish_id = D.dish_id) >= 2 ORDER BY D.dish_id ASC"
+        ).format()
+        _, result = conn.execute(query)
+        id_list = []
         for row in result:
-            dish_ids.append(row["dish_id"])
-
-        return dish_ids
+            id_list.append(row["dish_id"])
+        return id_list
     except Exception as e:
         if conn:
             conn.rollback()
@@ -926,6 +919,8 @@ def get_non_worth_price_increase() -> List[int]:
     finally:
         if conn:
             conn.close()
+
+
 
 
 def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
@@ -1008,65 +1003,22 @@ def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
 def get_potential_dish_recommendations(cust_id: int) -> List[int]:
     conn = None
     try:
-        # Check if inputs are valid
         if cust_id <= 0:
             return []
 
         conn = Connector.DBConnector()
-
-        # Check if the customer exists
-        query = sql.SQL("SELECT * FROM Customers WHERE cust_id = {id}").format(
-            id=sql.Literal(cust_id)
-        )
-        rows_affected, result = conn.execute(query)
-
-        if result.isEmpty():
-            return []
-
-        # Find dishes that similar customers ordered but this customer hasn't
-        # Two customers are similar if they both rated the same dish with the same rating at least once
         query = sql.SQL(
-            """            WITH SimilarCustomers AS (
-                -- Customers who gave the same rating to the same dish as our customer
-                SELECT DISTINCT r2.cust_id
-                FROM Ratings r1
-                JOIN Ratings r2 ON r1.dish_id = r2.dish_id AND r1.rating = r2.rating
-                WHERE r1.cust_id = {cust_id} AND r2.cust_id != {cust_id}
-            ),OrderedByOthers AS (
-                -- Dishes ordered by similar customers
-                SELECT DISTINCT od.dish_id
-                FROM DishOrders od
-                JOIN Orders o ON od.order_id = o.order_id
-                WHERE o.cust_id IN (SELECT cust_id FROM SimilarCustomers)
-            ),
-            OrderedByCustomer AS (
-                -- Dishes already ordered by our customer
-                SELECT DISTINCT od.dish_id
-                FROM DishOrders od
-                JOIN Orders o ON od.order_id = o.order_id
-                WHERE o.cust_id = {cust_id}
-            ),
-            RecommendedDishes AS (
-                -- Dishes ordered by similar customers but not by our customer
-                SELECT dish_id
-                FROM OrderedByOthers
-                EXCEPT
-                SELECT dish_id
-                FROM OrderedByCustomer
-            )
-            SELECT dish_id
-            FROM RecommendedDishes
-            ORDER BY dish_id
-        """
-        ).format(cust_id=sql.Literal(cust_id))
+            "SELECT RA.dish_id AS rec "
+            "FROM SimilarCustomers AS SC JOIN Ratings AS RA ON (SC.C1 ={c_id} AND SC.C2 = RA.cust_id) "
+            "WHERE RA.rating >  3 EXCEPT ( "
+            "SELECT D.dish_id AS rec FROM CustomerOrders AS CO JOIN DishOrders AS D ON CO.order_id = D.order_id "
+            "WHERE CO.cust_id = {c_id}) ORDER BY rec ASC  ").format(c_id=sql.Literal(cust_id))
 
-        rows_affected, result = conn.execute(query)
+        _, result = conn.execute(query)
 
-        # If no recommendations found
         if result.isEmpty():
             return []
 
-        # Extract recommended dish IDs
         recommended_dishes = []
         for row in result:
             recommended_dishes.append(row["dish_id"])
