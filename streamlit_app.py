@@ -61,14 +61,14 @@ def main():
                 elif result == ReturnValue.ALREADY_EXISTS:
                     st.warning("Customer already exists.")
                 elif result == ReturnValue.BAD_PARAMS:
-                    st.error("Invalid input. Make sure all fields are valid (including a 10-digit phone number).")
+                    st.error("Invalid input. Make sure all fields are valid.")
                 else:
                     st.error("An unexpected error occurred.")
 
     elif action == "Add Dish":
         with st.form("Add Dish"):
             dish_id = st.number_input("Dish ID", min_value=1, step=1, format="%d")
-            name = st.text_input("Dish Name")
+            name = st.text_input("Dish Name (at least 4 characters)")
             price = st.number_input("Price", min_value=0.01, step=0.01, format="%.2f")
             is_active = st.checkbox("Is Active", value=True)
             submitted = st.form_submit_button("Add Dish")
@@ -80,7 +80,7 @@ def main():
                 elif result == ReturnValue.ALREADY_EXISTS:
                     st.warning("Dish already exists.")
                 elif result == ReturnValue.BAD_PARAMS:
-                    st.error("Invalid input. Make sure the dish name is at least 4 characters and price is positive.")
+                    st.error("Invalid input. Make sure all fields are valid.")
                 else:
                     st.error("An unexpected error occurred.")
 
@@ -90,12 +90,11 @@ def main():
             date = st.date_input("Date")
             time = st.time_input("Time")
             delivery_fee = st.number_input("Delivery Fee", min_value=0.0, step=0.01, format="%.2f")
-            delivery_address = st.text_input("Delivery Address")
+            delivery_address = st.text_input("Delivery Address (at least 10 characters)")
             submitted = st.form_submit_button("Add Order")
             if submitted:
                 from datetime import datetime
                 from Business.Order import Order
-                # Combine date and time into a datetime object
                 date_time = datetime.combine(date, time)
                 result = add_order(Order(order_id, date_time, delivery_fee, delivery_address))
                 if result == ReturnValue.OK:
@@ -103,21 +102,21 @@ def main():
                 elif result == ReturnValue.ALREADY_EXISTS:
                     st.warning("Order already exists.")
                 elif result == ReturnValue.BAD_PARAMS:
-                    st.error("Invalid input. Make sure delivery address is at least 5 characters long and delivery fee is non-negative.")
+                    st.error("Invalid input. Make sure all fields are valid.")
                 else:
                     st.error("An unexpected error occurred.")
 
     elif action == "Place Order":
         with st.form("Place Order"):
-            order_id = st.number_input("Order ID", min_value=1, step=1, format="%d")
             customer_id = st.number_input("Customer ID", min_value=1, step=1, format="%d")
+            order_id = st.number_input("Order ID", min_value=1, step=1, format="%d")
             submitted = st.form_submit_button("Place Order")
             if submitted:
                 result = customer_placed_order(customer_id, order_id)
                 if result == ReturnValue.OK:
                     st.success("Order placed successfully.")
                 elif result == ReturnValue.ALREADY_EXISTS:
-                    st.warning("This customer has already placed this order.")
+                    st.warning("A customer has already placed this order.")
                 elif result == ReturnValue.NOT_EXISTS:
                     st.error("Customer or order does not exist.")
                 else:
@@ -159,10 +158,18 @@ def main():
 
     elif action == "Total Price of Every Order": 
         st.subheader("Total Price of Every Order")
-        # Use the total_price_per_order view
-        res = Connector.DBConnector().execute("SELECT order_id, total_price FROM total_price_per_order ORDER BY order_id")[1]
+        
+        res = Connector.DBConnector().execute("SELECT order_id FROM orders ORDER BY order_id")[1]
+        
         if not res.isEmpty():
-            st.dataframe(pd.DataFrame(res.rows))
+            order_data = []
+            
+            for row in res.rows:
+                order_id = row[0]
+                total_price = get_order_total_price(order_id)
+                order_data.append({"Order ID": order_id, "Total Price": f"${total_price:.2f}"})
+            
+            st.dataframe(pd.DataFrame(order_data))
         else:
             st.info("No orders found.")
 
@@ -170,11 +177,6 @@ def main():
         st.subheader("Customers with Maximum Average Spending")
         max_spending_customers = get_customers_spent_max_avg_amount_money()
         if max_spending_customers:
-            # Convert to DataFrame for display
-            df = pd.DataFrame({"Customer ID": max_spending_customers})
-            st.dataframe(df)
-            
-            # Display additional information about these customers
             st.subheader("Customer Details")
             customer_details = []
             for cust_id in max_spending_customers:
@@ -195,7 +197,6 @@ def main():
         if st.button("Show Dishes"):
             order_dishes = get_all_order_items(order_id)
             if order_dishes:
-                # Convert to DataFrame for display
                 dishes_data = []
                 for order_dish in order_dishes:
                     dish = get_dish(order_dish.get_dish_id())
@@ -209,11 +210,9 @@ def main():
                 
                 st.dataframe(pd.DataFrame(dishes_data))
                 
-                # Display order total
                 total_price = get_order_total_price(order_id)
                 st.subheader(f"Order Total: ${total_price:.2f}")
                 
-                # Display customer info
                 customer = get_customer_that_placed_order(order_id)
                 if customer.get_cust_id() is not None:
                     st.subheader("Customer Information")

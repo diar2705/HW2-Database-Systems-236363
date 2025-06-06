@@ -12,6 +12,7 @@ from Utility.DBConnector import ResultSet
 
 
 # ---------------------------------- CRUD API: ----------------------------------
+
 # Basic database functions
 
 
@@ -226,7 +227,6 @@ def drop_tables() -> None:
     conn = None
     try:
         conn = Connector.DBConnector()
-        # Drop views first
         conn.execute("""DROP VIEW IF EXISTS monthly_profit""")
         conn.execute("""DROP VIEW IF EXISTS monthly_orders""")
         conn.execute("""DROP VIEW IF EXISTS similar_customers""")
@@ -234,7 +234,6 @@ def drop_tables() -> None:
         conn.execute("""DROP VIEW IF EXISTS sort_ratings_desc""")
         conn.execute("""DROP VIEW IF EXISTS total_price_per_order""")
 
-        # Then drop tables
         conn.execute("""DROP TABLE IF EXISTS Ratings""")
         conn.execute("""DROP TABLE IF EXISTS DishOrders""")
         conn.execute("""DROP TABLE IF EXISTS CustomerOrders""")
@@ -255,7 +254,6 @@ def drop_tables() -> None:
 # CRUD API
 
 
-#! do we need to use rollback for each except?
 def add_customer(customer: Customer) -> ReturnValue:
     conn = None
     try:
@@ -307,11 +305,9 @@ def get_customer(customer_id: int) -> Customer:
 
         rows_affected, result = conn.execute(query)
         
-        # If no customer found
         if rows_affected == 0 or result.isEmpty():
             return BadCustomer()
         
-        # Get first (and only) row of results
         row = result[0]
         customer = Customer(
             cust_id=row["cust_id"],
@@ -408,11 +404,9 @@ def get_order(order_id: int) -> Order:
 
         rows_affected, result = conn.execute(query)
         
-        # If no order found
         if rows_affected == 0 or result.isEmpty():
             return BadOrder()
         
-        # Get first (and only) row of results
         row = result[0]
         order = Order(
             order_id=row["order_id"],
@@ -507,11 +501,9 @@ def get_dish(dish_id: int) -> Dish:
 
         rows_affected, result = conn.execute(query)
         
-        # If no dish found
         if rows_affected == 0 or result.isEmpty():
             return BadDish()
         
-        # Get first (and only) row of results
         row = result[0]
         dish = Dish(
             dish_id=row["dish_id"],
@@ -631,7 +623,6 @@ def get_customer_that_placed_order(order_id: int) -> Customer:
 
         rows_affected, result = conn.execute(query)
         
-        # If no customer found for this order
         if rows_affected == 0 or result.isEmpty():
             return BadCustomer()
         
@@ -902,10 +893,6 @@ def get_customers_spent_max_avg_amount_money() -> List[int]:
 def get_most_ordered_dish_in_period(start: datetime, end: datetime) -> Dish:
     conn = None
     try:
-        #! IDK if we need these
-        if start is None or end is None or start > end:
-            return BadDish()
-
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
@@ -932,7 +919,7 @@ def get_most_ordered_dish_in_period(start: datetime, end: datetime) -> Dish:
 
         rows_affected, result = conn.execute(query)
         
-        # If no dish found
+
         if rows_affected == 0 or result.isEmpty():
             return BadDish()
         
@@ -1115,7 +1102,7 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
         
         recommended_dish_list = []
         for row in result:
-            recommended_dish_list.append(row["dish_id"])
+            recommended_dish_list.append(row["rec"])
         
         return recommended_dish_list
     except Exception:

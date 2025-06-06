@@ -1515,6 +1515,9 @@ class Test(AbstractTest):
         customer2 = Customer(5001, "Recommendation Test C2", 30, "0987654321")
         self.assertEqual(ReturnValue.OK, Solution.add_customer(customer2), "Add customer 2 for recommendation test")
         
+        customer3 = Customer(5002, "Recommendation Test C3", 40, "1122334455")
+        self.assertEqual(ReturnValue.OK, Solution.add_customer(customer3), "Add customer 3 for recommendation test")
+        
         # Create dishes for testing
         dish1 = Dish(5000, "Recommendation Pizza", 50.0, True)
         self.assertEqual(ReturnValue.OK, Solution.add_dish(dish1), "Add dish 1 for recommendation test")
@@ -1541,6 +1544,14 @@ class Test(AbstractTest):
         self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(5001, 5098, 4), "Customer 2 rates common dish 2")
         self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(5000, 5097, 3), "Customer 1 rates common dish 3")
         self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(5001, 5097, 3), "Customer 2 rates common dish 3")
+        
+        # Customer 1 ordered the dishes they rated
+        order1 = Order(5000, datetime.now(), 10.0, "Recommendation Address 123456")
+        self.assertEqual(ReturnValue.OK, Solution.add_order(order1), "Add order for customer 1")
+        self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(5000, 5000), "Customer 1 places order")
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(5000, 5099, 1), "Add dish 1 to customer 1's order")
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(5000, 5098, 2), "Add dish 2 to customer 1's order")
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(5000, 5097, 3), "Add dish 3 to customer 1's order")
         
         # Customer 2 rates dishes that will be recommendations
         self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(5001, 5000, 5), 
@@ -1575,10 +1586,10 @@ class Test(AbstractTest):
         
         # Test when customer already ordered recommended dishes
         # Customer 1 orders dish 1
-        order1 = Order(5000, datetime.now(), 10.0, "Recommendation Address 123456")
+        order1 = Order(5001, datetime.now(), 10.0, "Recommendation Address 123456")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order1), "Add order for customer 1")
-        self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(5000, 5000), "Customer 1 places order")
-        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(5000, 5000, 1), "Add dish 1 to customer 1's order")
+        self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(5000, 5001), "Customer 1 places order")
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(5001, 5000, 1), "Add dish 1 to customer 1's order")
         
         # Customer 1 should now only get recommendation for dish 3
         ordered_result = Solution.get_potential_dish_recommendations(5000)
@@ -1595,11 +1606,15 @@ class Test(AbstractTest):
         self.assertEqual(inactive_result, [5002], 
                          "Expected inactive dish to still be recommended")
         
+        # Set dish 3 back to active so we can order it
+        self.assertEqual(ReturnValue.OK, Solution.update_dish_active_status(5002, True), 
+                         "Set dish 3 back to active")
+        
         # Test after ordering all recommended dishes
-        order2 = Order(5001, datetime.now(), 15.0, "Recommendation Address 789012")
+        order2 = Order(5002, datetime.now(), 15.0, "Recommendation Address 789012")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order2), "Add second order for customer 1")
-        self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(5000, 5001), "Customer 1 places second order")
-        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(5001, 5002, 1), "Add dish 3 to customer 1's order")
+        self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(5000, 5002), "Customer 1 places second order")
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(5002, 5002, 1), "Add dish 3 to customer 1's order")
         
         # Customer 1 should now get no recommendations (ordered all highly rated dishes)
         no_recs_result = Solution.get_potential_dish_recommendations(5000)
