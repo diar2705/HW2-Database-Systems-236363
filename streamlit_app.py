@@ -145,15 +145,15 @@ def main():
     elif action == "Visualize Tables":
         st.subheader("Customers")
         res = Connector.DBConnector().execute("SELECT * FROM customers")[1]
-        st.dataframe(pd.DataFrame(res.rows))
+        st.dataframe(pd.DataFrame(res.rows, columns=res.cols))
 
         st.subheader("Orders")
         res = Connector.DBConnector().execute("SELECT * FROM orders")[1]
-        st.dataframe(pd.DataFrame(res.rows))
+        st.dataframe(pd.DataFrame(res.rows, columns=res.cols))
 
         st.subheader("Dishes")
         res = Connector.DBConnector().execute("SELECT * FROM dishes")[1]
-        st.dataframe(pd.DataFrame(res.rows))
+        st.dataframe(pd.DataFrame(res.rows, columns=res.cols)) 
         
 
 

@@ -57,7 +57,7 @@ def create_tables() -> None:
             CREATE TABLE CustomerOrders(
                     order_id INTEGER,
                     cust_id INTEGER,
-                    FOREIGN KEY(cust_id) REFERENCES Customers(cust_id),
+                    FOREIGN KEY(cust_id) REFERENCES Customers(cust_id) ON DELETE CASCADE,
                     FOREIGN KEY(order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,
                     PRIMARY KEY(order_id)
                    )
@@ -417,7 +417,7 @@ def get_order(order_id: int) -> Order:
         order = Order(
             order_id=row["order_id"],
             date=row["date"],
-            delivery_fee=row["delivery_fee"],
+            delivery_fee=float(row["delivery_fee"]),
             delivery_address=row["delivery_address"],
         )
         
@@ -516,7 +516,7 @@ def get_dish(dish_id: int) -> Dish:
         dish = Dish(
             dish_id=row["dish_id"],
             name=row["name"],
-            price=row["price"],
+            price=float(row["price"]),
             is_active=row["is_active"],
         )
         
@@ -733,7 +733,7 @@ def get_all_order_items(order_id: int) -> List[OrderDish]:
         customer_orders_list = []
         for row in result:
             order_dish = OrderDish(
-                dish_id=row["dish_id"], amount=row["amount"], price=row["price"]
+                dish_id=row["dish_id"], amount=row["amount"], price=float(row["price"])
             )
             customer_orders_list.append(order_dish)
         
@@ -842,10 +842,9 @@ def get_order_total_price(order_id: int) -> float:
     conn = None
     try:
         conn = Connector.DBConnector()
-        #! IDK if we can user ::FLOAT but it lets us convert to float in the query
         query = sql.SQL(
             """
-            SELECT total_price::FLOAT
+            SELECT total_price
             FROM total_price_per_order 
             WHERE order_id = {o_id}
         """
@@ -855,7 +854,7 @@ def get_order_total_price(order_id: int) -> float:
         if rows_affected == 0 or result.isEmpty():
             return 0.0
             
-        total_price = result[0]["total_price"]
+        total_price = float(result[0]["total_price"])
         
         return total_price
     except Exception:
@@ -941,7 +940,7 @@ def get_most_ordered_dish_in_period(start: datetime, end: datetime) -> Dish:
         dish = Dish(
             dish_id=row["dish_id"],
             name=row["name"],
-            price=row["price"],
+            price=float(row["price"]),
             is_active=row["is_active"],
         )
         
@@ -1069,7 +1068,7 @@ def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
                        SUM(monthly_profit) OVER (ORDER BY month) AS cumulative_profit
                 FROM FilteredMonthlyProfit
             )
-            SELECT month::int,
+            SELECT month,
                    cumulative_profit
             FROM CumulativeProfit
             ORDER BY month
@@ -1080,7 +1079,7 @@ def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
         
         monthly_profits = []
         for row in result:
-            monthly_profits.append((row["month"], row["cumulative_profit"]))
+            monthly_profits.append((row["month"], float(row["cumulative_profit"])))
         
         return monthly_profits
     except Exception:
