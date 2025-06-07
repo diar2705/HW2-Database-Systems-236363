@@ -977,15 +977,22 @@ def get_customers_rated_but_not_ordered() -> List[int]:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            SELECT DISTINCT r.cust_id
-            FROM Ratings r
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM CustomerOrders co
-                JOIN DishOrders od ON co.order_id = od.order_id
-                WHERE co.cust_id = r.cust_id AND od.dish_id = r.dish_id
-            )
-            ORDER BY r.cust_id
+            SELECT DISTINCT C.cust_id 
+            FROM (Customers AS C JOIN Ratings AS R ON R.cust_id = C.cust_id),
+                 (SELECT D.dish_id, COALESCE(AVG(DR.rating), 3) AS avg_rating 
+                  FROM Ratings DR 
+                  RIGHT OUTER JOIN Dishes D ON D.dish_id = DR.dish_id 
+                  GROUP BY D.dish_id 
+                  ORDER BY avg_rating ASC, D.dish_id ASC
+                  LIMIT 5) AS RA 
+            WHERE R.dish_id = RA.dish_id 
+              AND R.rating < 3
+              AND R.dish_id NOT IN (
+                SELECT D.dish_id 
+                FROM CustomerOrders AS CO, DishOrders AS D 
+                WHERE CO.order_id = D.order_id AND CO.cust_id = C.cust_id
+              )
+            ORDER BY C.cust_id
         """
         )
 
@@ -1043,22 +1050,28 @@ def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            WITH FilteredMonthlyProfit AS (
-                SELECT month,
-                       monthly_profit
+            WITH RECURSIVE months(month_num) AS (
+                SELECT 1
+                UNION ALL
+                SELECT month_num + 1 FROM months WHERE month_num < 12
+            ),
+            monthly_profits_for_year AS (
+                SELECT month, COALESCE(SUM(monthly_profit), 0) AS profit
                 FROM monthly_profit
                 WHERE year = {year}
-                ORDER BY month
+                GROUP BY month
             ),
-            CumulativeProfit AS (
-                SELECT month,
-                       SUM(monthly_profit) OVER (ORDER BY month) AS cumulative_profit
-                FROM FilteredMonthlyProfit
+            all_months AS (
+                SELECT m.month_num, COALESCE(mp.profit, 0) AS monthly_profit
+                FROM months m
+                LEFT JOIN monthly_profits_for_year mp ON m.month_num = mp.month
+            ),
+            cumulative_profits AS (
+                SELECT month_num,
+                       SUM(monthly_profit) OVER (ORDER BY month_num) AS cumulative_profit
+                FROM all_months
             )
-            SELECT month,
-                   cumulative_profit
-            FROM CumulativeProfit
-            ORDER BY month
+            SELECT month_num as month, cumulative_profit FROM cumulative_profits ORDER BY month DESC
         """
         ).format(year=sql.Literal(year))
 

@@ -1160,7 +1160,7 @@ class Test(AbstractTest):
         cust4 = Customer(3003, 'Rate No Order Customer 4', 45, "4444555566")
         self.assertEqual(ReturnValue.OK, Solution.add_customer(cust4), 'add customer 4')
         
-        # Setup: Add dishes
+        # Setup: Add 6 dishes to ensure we have enough for the "5 lowest-rated" requirement
         dish1 = Dish(3000, "Rate No Order Dish 1", 20.00, True)
         self.assertEqual(ReturnValue.OK, Solution.add_dish(dish1), 'add dish 1')
         
@@ -1170,7 +1170,48 @@ class Test(AbstractTest):
         dish3 = Dish(3002, "Rate No Order Dish 3", 30.00, True)
         self.assertEqual(ReturnValue.OK, Solution.add_dish(dish3), 'add dish 3')
         
-        # Setup: Add orders and connect to customers
+        dish4 = Dish(3003, "Rate No Order Dish 4", 35.00, True)
+        self.assertEqual(ReturnValue.OK, Solution.add_dish(dish4), 'add dish 4')
+        
+        dish5 = Dish(3004, "Rate No Order Dish 5", 40.00, True)
+        self.assertEqual(ReturnValue.OK, Solution.add_dish(dish5), 'add dish 5')
+        
+        dish6 = Dish(3005, "Rate No Order Dish 6", 45.00, True)
+        self.assertEqual(ReturnValue.OK, Solution.add_dish(dish6), 'add dish 6')
+        
+        # Add a customer 5 for setup ratings
+        cust5 = Customer(3004, 'Setup Customer', 25, "5555666677")
+        self.assertEqual(ReturnValue.OK, Solution.add_customer(cust5), 'add setup customer')
+        
+        # Setup: Create dish ratings to establish the "5 lowest-rated dishes"
+        # We'll make dishes 3000-3004 the 5 lowest rated, and dish 3005 highly rated
+        
+        # Dish 3000: Average rating = 1.5 (ratings: 1, 2)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3003, 3000, 1), 'setup: customer 4 rates dish 1 with 1')
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3004, 3000, 2), 'setup: customer 5 rates dish 1 with 2')
+        
+        # Dish 3001: Average rating = 2.0 (ratings: 2, 2)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3003, 3001, 2), 'setup: customer 4 rates dish 2 with 2')
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3004, 3001, 2), 'setup: customer 5 rates dish 2 with 2')
+        
+        # Dish 3002: Average rating = 2.5 (ratings: 2, 3)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3003, 3002, 2), 'setup: customer 4 rates dish 3 with 2')
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3004, 3002, 3), 'setup: customer 5 rates dish 3 with 3')
+        
+        # Dish 3003: Average rating = 2.75 (ratings: 2, 3, 3)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3003, 3003, 2), 'setup: customer 4 rates dish 4 with 2')
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3004, 3003, 3), 'setup: customer 5 rates dish 4 with 3')
+        
+        # Dish 3004: Average rating = 3.0 (default for no ratings)
+        # No ratings initially, so it defaults to 3.0
+        
+        # Dish 3005: Average rating = 4.5 (ratings: 4, 5) - this will NOT be in bottom 5
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3003, 3005, 4), 'setup: customer 4 rates dish 6 with 4')
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3004, 3005, 5), 'setup: customer 5 rates dish 6 with 5')
+        
+        # Now the 5 lowest-rated dishes should be: 3000, 3001, 3002, 3003, 3004 (in that order)
+        
+        # Setup: Add orders for some customers
         order1 = Order(3000, datetime.now(), 5.00, "300 Rate No Order Street")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order1), 'add order 1')
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(3000, 3000), 'customer 1 places order 1')
@@ -1180,65 +1221,74 @@ class Test(AbstractTest):
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(3001, 3001), 'customer 2 places order 2')
         
         # Setup: Add dishes to orders
-        # Customer 1 orders dishes 1 and 2
-        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3000, 3000, 1), 'add dish 1 to order 1')
-        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3000, 3001, 2), 'add dish 2 to order 1')
+        # Customer 1 orders dish 3000 and 3001
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3000, 3000, 1), 'add dish 3000 to order 1')
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3000, 3001, 1), 'add dish 3001 to order 1')
         
-        # Customer 2 orders dish 2
-        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3001, 3001, 1), 'add dish 2 to order 2')
+        # Customer 2 orders dish 3001 only
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3001, 3001, 1), 'add dish 3001 to order 2')
         
-        # Setup: Add ratings
-        # Customer 1 rates dishes 1, 2 and 3 (but only ordered 1 and 2)
-        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3000, 3000, 5), 'customer 1 rates dish 1')
-        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3000, 3001, 4), 'customer 1 rates dish 2')
-        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3000, 3002, 3), 'customer 1 rates dish 3')
+        # Test scenario: Add bad ratings (< 3) on lowest-rated dishes for customers who didn't order them
         
-        # Customer 2 rates dishes 1 and 2 (but only ordered 2)
-        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3001, 3000, 4), 'customer 2 rates dish 1')
-        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3001, 3001, 5), 'customer 2 rates dish 2')
+        # Customer 1: Give bad rating to dish 3002 (which they never ordered, and it's in bottom 5)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3000, 3002, 1), 'customer 1 gives bad rating to dish 3002')
         
-        # Customer 3 rates dish 1 (but ordered nothing)
-        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3002, 3000, 3), 'customer 3 rates dish 1')
+        # Customer 2: Give bad rating to dish 3000 (which they never ordered, and it's in bottom 5)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3001, 3000, 2), 'customer 2 gives bad rating to dish 3000')
         
-        # Customer 4 rates nothing and orders nothing
+        # Customer 3: Give bad rating to dish 3000 (never ordered anything, dish is in bottom 5)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3002, 3000, 1), 'customer 3 gives bad rating to dish 3000')
         
-        # Test initial state
-        # Expected result: Customers 1, 2, and 3 have rated dishes they didn't order
+        # Customer 3: Also give bad rating to dish 3005 (never ordered, but dish is NOT in bottom 5)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3002, 3005, 2), 'customer 3 gives bad rating to dish 3005 (not in bottom 5)')
+        
+        # Customer 1: Give good rating to dish 3003 (never ordered, but rating is not bad)
+        self.assertEqual(ReturnValue.OK, Solution.customer_rated_dish(3000, 3003, 4), 'customer 1 gives good rating to dish 3003')
+        
+        # Test the function
         rated_not_ordered = Solution.get_customers_rated_but_not_ordered()
-        self.assertEqual(3, len(rated_not_ordered), 'three customers rated but not ordered')
-        self.assertIn(3000, rated_not_ordered, 'customer 1 in result')
-        self.assertIn(3001, rated_not_ordered, 'customer 2 in result')
-        self.assertIn(3002, rated_not_ordered, 'customer 3 in result')
+        self.assertEqual(5, len(rated_not_ordered), 'five customers should be returned')
+        self.assertIn(3000, rated_not_ordered, 'customer 1 should be in result (bad rating on dish 3002)')
+        self.assertIn(3001, rated_not_ordered, 'customer 2 should be in result (bad rating on dish 3000)')
+        self.assertIn(3002, rated_not_ordered, 'customer 3 should be in result (bad rating on dish 3000)')
+        self.assertIn(3003, rated_not_ordered, 'customer 4 should be in result (bad ratings on dishes 3000, 3001, 3002)')
+        self.assertIn(3004, rated_not_ordered, 'customer 5 should be in result (bad ratings on dishes 3001, 3002)')
         
-        # Test after customer 1 orders dish 3 (which they previously only rated)
+        # Verify the list is sorted by customer ID
+        self.assertEqual([3000, 3001, 3002, 3003, 3004], sorted(rated_not_ordered), 'result should be sorted by customer ID')
+        
+        # Test edge case: Customer 1 now orders dish 3002 (which they gave bad rating to)
         order3 = Order(3002, datetime.now(), 6.25, "302 Rate No Order Boulevard")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order3), 'add order 3')
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(3000, 3002), 'customer 1 places order 3')
-        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3002, 3002, 1), 'add dish 3 to order 3')
+        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3002, 3002, 1), 'add dish 3002 to order 3')
         
+        # Now customer 1 should be removed from the result
         rated_not_ordered_updated = Solution.get_customers_rated_but_not_ordered()
-        self.assertEqual(2, len(rated_not_ordered_updated), 'two customers rated but not ordered')
-        self.assertNotIn(3000, rated_not_ordered_updated, 'customer 1 not in result anymore')
-        self.assertIn(3001, rated_not_ordered_updated, 'customer 2 still in result')
-        self.assertIn(3002, rated_not_ordered_updated, 'customer 3 still in result')
+        self.assertEqual(4, len(rated_not_ordered_updated), 'four customers should remain')
+        self.assertNotIn(3000, rated_not_ordered_updated, 'customer 1 should not be in result anymore')
+        self.assertIn(3001, rated_not_ordered_updated, 'customer 2 should still be in result')
+        self.assertIn(3002, rated_not_ordered_updated, 'customer 3 should still be in result')
+        self.assertIn(3003, rated_not_ordered_updated, 'customer 4 should still be in result')
+        self.assertIn(3004, rated_not_ordered_updated, 'customer 5 should still be in result')
         
-        # Test after customer 2 orders dish 1 (which they previously only rated)
-        order4 = Order(3003, datetime.now(), 8.75, "303 Rate No Order Drive")
-        self.assertEqual(ReturnValue.OK, Solution.add_order(order4), 'add order 4')
-        self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(3001, 3003), 'customer 2 places order 4')
-        self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(3003, 3000, 1), 'add dish 1 to order 4')
+        # Test edge case: Remove bad rating
+        self.assertEqual(ReturnValue.OK, Solution.customer_deleted_rating_on_dish(3001, 3000), 'delete customer 2 bad rating')
         
         rated_not_ordered_updated2 = Solution.get_customers_rated_but_not_ordered()
-        self.assertEqual(1, len(rated_not_ordered_updated2), 'one customer rated but not ordered')
-        self.assertNotIn(3000, rated_not_ordered_updated2, 'customer 1 not in result')
-        self.assertNotIn(3001, rated_not_ordered_updated2, 'customer 2 not in result anymore')
-        self.assertIn(3002, rated_not_ordered_updated2, 'customer 3 still in result')
+        self.assertEqual(3, len(rated_not_ordered_updated2), 'three customers should remain')
+        self.assertNotIn(3001, rated_not_ordered_updated2, 'customer 2 should not be in result anymore')
+        self.assertIn(3002, rated_not_ordered_updated2, 'customer 3 should still be in result')
+        self.assertIn(3003, rated_not_ordered_updated2, 'customer 4 should still be in result')
+        self.assertIn(3004, rated_not_ordered_updated2, 'customer 5 should still be in result')
         
-        # Test after removing all ratings for customer 3
-        self.assertEqual(ReturnValue.OK, Solution.customer_deleted_rating_on_dish(3002, 3000), 'delete customer 3 rating')
+        # Test edge case: Remove all qualifying ratings
+        self.assertEqual(ReturnValue.OK, Solution.customer_deleted_rating_on_dish(3002, 3000), 'delete customer 3 bad rating')
         
-        rated_not_ordered_updated3 = Solution.get_customers_rated_but_not_ordered()
-        self.assertEqual(0, len(rated_not_ordered_updated3), 'no customers rated but not ordered')
+        rated_not_ordered_final = Solution.get_customers_rated_but_not_ordered()
+        self.assertEqual(2, len(rated_not_ordered_final), 'two customers should remain (customers 3003 and 3004 still have bad ratings)')
+        self.assertIn(3003, rated_not_ordered_final, 'customer 4 should still be in result')
+        self.assertIn(3004, rated_not_ordered_final, 'customer 5 should still be in result')
         
     
     def test_024_get_non_worth_price_increase_edge_cases(self) -> None:
@@ -1383,92 +1433,114 @@ class Test(AbstractTest):
         from Business.Customer import Customer
         from Business.Order import Order
         from datetime import datetime
-        
-        # Test with no orders in the database
+
+        # Test with no orders in the database - should return all 12 months with 0.0 profit
         empty_result = Solution.get_cumulative_profit_per_month(2023)
-        self.assertEqual(empty_result, [], "Expected empty list when no orders exist")
-        
+        expected_empty = [(12, 0.0), (11, 0.0), (10, 0.0), (9, 0.0), (8, 0.0), (7, 0.0), 
+                         (6, 0.0), (5, 0.0), (4, 0.0), (3, 0.0), (2, 0.0), (1, 0.0)]
+        self.assertEqual(empty_result, expected_empty, "Expected all 12 months with 0.0 profit when no orders exist")
+
         # Setup data for testing
         customer = Customer(4000, "Profit Test Customer", 25, "1234567890")
         self.assertEqual(ReturnValue.OK, Solution.add_customer(customer), "Add customer for profit test")
-        
+
         dish = Dish(4000, "Profit Test Pizza", 50.0, True)
         self.assertEqual(ReturnValue.OK, Solution.add_dish(dish), "Add dish for profit test")
-        
-        # Test with orders in a single month
+
+        # Test with orders in a single month (January)
         # Create two orders in January 2023
         order1 = Order(4000, datetime(2023, 1, 10, 12, 0, 0), 10.0, "Address 123456")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order1), "Add January order 1")
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(4000, 4000), "Customer places January order 1")
         self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(4000, 4000, 2), "Add 2 dishes to January order 1")
-        
+
         order2 = Order(4001, datetime(2023, 1, 20, 18, 0, 0), 15.0, "Address 123456")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order2), "Add January order 2")
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(4000, 4001), "Customer places January order 2")
         self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(4001, 4000, 3), "Add 3 dishes to January order 2")
-        
+
         # Total profit for January: (2*50)+10 + (3*50)+15 = $110 + $165 = $275
+        # All months from Feb-Dec should have cumulative profit of $275
         january_result = Solution.get_cumulative_profit_per_month(2023)
-        self.assertEqual(january_result, [(1, 275.0)], "Expected cumulative profit of $275 for January")
-        
+        expected_january = [(12, 275.0), (11, 275.0), (10, 275.0), (9, 275.0), (8, 275.0), (7, 275.0),
+                           (6, 275.0), (5, 275.0), (4, 275.0), (3, 275.0), (2, 275.0), (1, 275.0)]
+        self.assertEqual(january_result, expected_january, "Expected all 12 months with cumulative profit from January")
+
         # Test with orders spread across multiple months
         # February order
         order3 = Order(4002, datetime(2023, 2, 15, 18, 0, 0), 15.0, "Address 123456")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order3), "Add February order")
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(4000, 4002), "Customer places February order")
         self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(4002, 4000, 1), "Add 1 dish to February order")
-        
+
         # April order (skipping March)
         order4 = Order(4003, datetime(2023, 4, 5, 13, 0, 0), 20.0, "Address 123456")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order4), "Add April order")
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(4000, 4003), "Customer places April order")
         self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(4003, 4000, 2), "Add 2 dishes to April order")
-        
-        # Check cumulative profit:
+
+        # Check cumulative profit for all 12 months:
         # January: $275
         # February: $275 + (1*50)+15 = $340
-        # March: No orders, not in result
+        # March: $340 (no new orders)
         # April: $340 + (2*50)+20 = $460
+        # May-December: $460 (no new orders)
         multi_month_result = Solution.get_cumulative_profit_per_month(2023)
-        self.assertEqual(multi_month_result, [(1, 275.0), (2, 340.0), (4, 460.0)], 
-                         "Expected correct cumulative profit across months with gaps")
-        
+        expected_multi = [(12, 460.0), (11, 460.0), (10, 460.0), (9, 460.0), (8, 460.0), (7, 460.0),
+                         (6, 460.0), (5, 460.0), (4, 460.0), (3, 340.0), (2, 340.0), (1, 275.0)]
+        self.assertEqual(multi_month_result, expected_multi, 
+                        "Expected all 12 months with correct cumulative profit, in descending order")
+
         # Test with orders across different years
         # 2022 order
         order5 = Order(4004, datetime(2022, 12, 10, 12, 0, 0), 10.0, "Address 123456")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order5), "Add 2022 order")
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(4000, 4004), "Customer places 2022 order")
         self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(4004, 4000, 2), "Add 2 dishes to 2022 order")
-        
-        # Check 2022 cumulative profit: (2*50)+10 = $110
+
+        # Check 2022 cumulative profit: 
+        # Jan-Nov: 0.0, Dec: (2*50)+10 = $110
         result_2022 = Solution.get_cumulative_profit_per_month(2022)
-        self.assertEqual(result_2022, [(12, 110.0)], "Expected correct cumulative profit for 2022")
-        
+        expected_2022 = [(12, 110.0), (11, 0.0), (10, 0.0), (9, 0.0), (8, 0.0), (7, 0.0),
+                        (6, 0.0), (5, 0.0), (4, 0.0), (3, 0.0), (2, 0.0), (1, 0.0)]
+        self.assertEqual(result_2022, expected_2022, "Expected all 12 months for 2022 with correct cumulative profit")
+
         # Check that 2023 profit is unaffected
         result_2023 = Solution.get_cumulative_profit_per_month(2023)
-        self.assertEqual(result_2023, [(1, 275.0), (2, 340.0), (4, 460.0)], 
-                         "Expected 2023 profit to be unaffected by 2022 orders")
-        
+        self.assertEqual(result_2023, expected_multi, 
+                        "Expected 2023 profit to be unaffected by 2022 orders")
+
         # Test with orders with multiple dish types
         # Add another dish
         dish2 = Dish(4001, "Profit Test Pasta", 40.0, True)
         self.assertEqual(ReturnValue.OK, Solution.add_dish(dish2), "Add second dish for profit test")
-        
+
         # June order with multiple dish types
         order6 = Order(4005, datetime(2023, 6, 10, 12, 0, 0), 10.0, "Address 123456")
         self.assertEqual(ReturnValue.OK, Solution.add_order(order6), "Add June order")
         self.assertEqual(ReturnValue.OK, Solution.customer_placed_order(4000, 4005), "Customer places June order")
         self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(4005, 4000, 1), "Add 1 pizza to June order")
         self.assertEqual(ReturnValue.OK, Solution.order_contains_dish(4005, 4001, 2), "Add 2 pastas to June order")
-        
-        # Check updated cumulative profit:
+
+        # Check updated cumulative profit for all 12 months:
         # January: $275
         # February: $340
+        # March: $340
         # April: $460
+        # May: $460
         # June: $460 + (1*50)+(2*40)+10 = $600
+        # July-December: $600
         final_result = Solution.get_cumulative_profit_per_month(2023)
-        self.assertEqual(final_result, [(1, 275.0), (2, 340.0), (4, 460.0), (6, 600.0)], 
-                         "Expected correct final cumulative profit with multiple dish types")
+        expected_final = [(12, 600.0), (11, 600.0), (10, 600.0), (9, 600.0), (8, 600.0), (7, 600.0),
+                         (6, 600.0), (5, 460.0), (4, 460.0), (3, 340.0), (2, 340.0), (1, 275.0)]
+        self.assertEqual(final_result, expected_final, 
+                    "Expected all 12 months with correct final cumulative profit including multiple dish types")
+
+        # Test edge case: year with no orders should return all 12 months with 0.0
+        no_orders_result = Solution.get_cumulative_profit_per_month(2024)
+        expected_no_orders = [(12, 0.0), (11, 0.0), (10, 0.0), (9, 0.0), (8, 0.0), (7, 0.0),
+                             (6, 0.0), (5, 0.0), (4, 0.0), (3, 0.0), (2, 0.0), (1, 0.0)]
+        self.assertEqual(no_orders_result, expected_no_orders, "Expected all 12 months with 0.0 for year with no orders")
 
     def test_026_get_potential_dish_recommendations_edge_cases(self) -> None:
         from Business.Dish import Dish
