@@ -154,6 +154,14 @@ def main():
         res = Connector.DBConnector().execute("SELECT * FROM dishes")[1]
         st.dataframe(pd.DataFrame(res.rows, columns=res.cols)) 
         
+        st.subheader("Dishes Orders")
+        res = Connector.DBConnector().execute("SELECT * FROM DishOrders")[1]
+        st.dataframe(pd.DataFrame(res.rows, columns=res.cols))
+        
+        st.subheader("Customers Orders")
+        res = Connector.DBConnector().execute("SELECT * FROM CustomerOrders")[1]
+        st.dataframe(pd.DataFrame(res.rows, columns=res.cols))
+        
 
 
     elif action == "Total Price of Every Order": 

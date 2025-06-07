@@ -22,159 +22,168 @@ def create_tables() -> None:
         conn = Connector.DBConnector()
         conn.execute(
             """
-            CREATE TABLE Customers(
-                    cust_id INTEGER PRIMARY KEY CHECK(cust_id > 0),
-                    full_name TEXT NOT NULL,
-                    age INTEGER NOT NULL CHECK(age BETWEEN 18 AND 120),
-                    phone TEXT NOT NULL CHECK(LENGTH(phone) = 10)
-                   )
+            CREATE TABLE Customers (
+                cust_id INTEGER PRIMARY KEY CHECK(cust_id > 0),
+                full_name TEXT NOT NULL,
+                age INTEGER NOT NULL CHECK(age BETWEEN 18 AND 120),
+                phone TEXT NOT NULL CHECK(LENGTH(phone) = 10)
+            )
         """
         )
 
         conn.execute(
             """
-            CREATE TABLE Orders(
-                    order_id INTEGER PRIMARY KEY CHECK(order_id > 0),
-                    date TIMESTAMP NOT NULL,
-                    delivery_fee DECIMAL NOT NULL CHECK(delivery_fee >= 0),
-                    delivery_address TEXT NOT NULL CHECK(LENGTH(delivery_address) >= 5)
-                   )
+            CREATE TABLE Orders (
+                order_id INTEGER PRIMARY KEY CHECK(order_id > 0),
+                date TIMESTAMP NOT NULL,
+                delivery_fee DECIMAL NOT NULL CHECK(delivery_fee >= 0),
+                delivery_address TEXT NOT NULL CHECK(LENGTH(delivery_address) >= 5)
+            )
         """
         )
 
         conn.execute(
             """
-            CREATE TABLE Dishes(
-                    dish_id INTEGER PRIMARY KEY CHECK(dish_id > 0),
-                    name TEXT NOT NULL CHECK(LENGTH(name) >= 4),
-                    price DECIMAL NOT NULL CHECK(price > 0),
-                    is_active BOOLEAN NOT NULL
-                   )
+            CREATE TABLE Dishes (
+                dish_id INTEGER PRIMARY KEY CHECK(dish_id > 0),
+                name TEXT NOT NULL CHECK(LENGTH(name) >= 4),
+                price DECIMAL NOT NULL CHECK(price > 0),
+                is_active BOOLEAN NOT NULL
+            )
         """
         )
 
         conn.execute(
             """
-            CREATE TABLE CustomerOrders(
-                    order_id INTEGER,
-                    cust_id INTEGER,
-                    FOREIGN KEY(cust_id) REFERENCES Customers(cust_id) ON DELETE CASCADE,
-                    FOREIGN KEY(order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,
-                    PRIMARY KEY(order_id)
-                   )
+            CREATE TABLE CustomerOrders (
+                order_id INTEGER,
+                cust_id INTEGER,
+                FOREIGN KEY (cust_id) REFERENCES Customers (cust_id) ON DELETE CASCADE,
+                FOREIGN KEY (order_id) REFERENCES Orders (order_id) ON DELETE CASCADE,
+                PRIMARY KEY (order_id)
+            )
         """
         )
 
         conn.execute(
             """
-            CREATE TABLE DishOrders(
-                    order_id INTEGER,
-                    dish_id INTEGER,
-                    amount INTEGER NOT NULL CHECK(amount >= 0),
-                    price DECIMAL NOT NULL,
-                    FOREIGN KEY(order_id) REFERENCES Orders(order_id) ON DELETE CASCADE,
-                    FOREIGN KEY(dish_id) REFERENCES Dishes(dish_id) ON DELETE CASCADE,
-                    PRIMARY KEY(order_id, dish_id)
-                   )
+            CREATE TABLE DishOrders (
+                order_id INTEGER,
+                dish_id INTEGER,
+                amount INTEGER NOT NULL CHECK(amount >= 0),
+                price DECIMAL NOT NULL,
+                FOREIGN KEY (order_id) REFERENCES Orders (order_id) ON DELETE CASCADE,
+                FOREIGN KEY (dish_id) REFERENCES Dishes (dish_id) ON DELETE CASCADE,
+                PRIMARY KEY (order_id, dish_id)
+            )
         """
         )
 
         conn.execute(
             """
-            CREATE TABLE Ratings(
-                    cust_id INTEGER,
-                    dish_id INTEGER,
-                    rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
-                    FOREIGN KEY(cust_id) REFERENCES Customers(cust_id) ON DELETE CASCADE,
-                    FOREIGN KEY(dish_id) REFERENCES Dishes(dish_id) ON DELETE CASCADE,
-                    PRIMARY KEY(cust_id, dish_id)
-                   )
+            CREATE TABLE Ratings (
+                cust_id INTEGER,
+                dish_id INTEGER,
+                rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+                FOREIGN KEY (cust_id) REFERENCES Customers (cust_id) ON DELETE CASCADE,
+                FOREIGN KEY (dish_id) REFERENCES Dishes (dish_id) ON DELETE CASCADE,
+                PRIMARY KEY (cust_id, dish_id)
+            )
         """
         )
 
         conn.execute(
             """
-            CREATE VIEW total_price_per_order AS 
-                    SELECT O.order_id AS order_id, 
-                           (COALESCE(SUM(D.amount * D.price), 0) + O.delivery_fee) AS total_price 
-                    FROM DishOrders D 
-                    RIGHT OUTER JOIN Orders O ON O.order_id = D.order_id 
-                    GROUP BY O.order_id, O.delivery_fee
+            CREATE VIEW totalPricePerOrder AS
+            SELECT 
+                O.order_id AS order_id,
+                (COALESCE(SUM(D.amount * D.price), 0) + O.delivery_fee) AS total_price
+            FROM DishOrders D
+            RIGHT OUTER JOIN Orders O ON O.order_id = D.order_id
+            GROUP BY O.order_id, O.delivery_fee
         """
         )
 
         conn.execute(
             """
-            CREATE VIEW sort_ratings_desc AS 
-                    SELECT D.dish_id, 
-                           COALESCE(AVG(DR.rating), 3) AS avg_rating 
-                    FROM Ratings DR 
-                    RIGHT OUTER JOIN Dishes D ON D.dish_id = DR.dish_id 
-                    GROUP BY D.dish_id 
-                    ORDER BY avg_rating DESC, D.dish_id ASC 
-                    LIMIT 5
+            CREATE VIEW sortRatingsDesc AS
+            SELECT 
+                D.dish_id,
+                COALESCE(AVG(DR.rating), 3) AS avg_rating
+            FROM Ratings DR
+            RIGHT OUTER JOIN Dishes D ON D.dish_id = DR.dish_id
+            GROUP BY D.dish_id
+            ORDER BY avg_rating DESC, D.dish_id ASC
+            LIMIT 5
         """
         )
 
         conn.execute(
             """
-            CREATE VIEW compared_prices AS 
-                    SELECT DO1.dish_id, 
-                           DO1.price, 
-                           (AVG(DO1.amount) * DO1.price) AS avg_price 
-                    FROM DishOrders DO1 
-                    GROUP BY DO1.dish_id, DO1.price 
-                    HAVING DO1.price <= (SELECT D.price FROM Dishes D WHERE D.dish_id = DO1.dish_id)
+            CREATE VIEW comparedPrices AS
+            SELECT 
+                DO1.dish_id,
+                DO1.price,
+                (AVG(DO1.amount) * DO1.price) AS avg_price
+            FROM DishOrders DO1
+            GROUP BY DO1.dish_id, DO1.price
+            HAVING DO1.price <= (SELECT D.price FROM Dishes D WHERE D.dish_id = DO1.dish_id)
         """
         )
 
         conn.execute(
             """
-            CREATE VIEW similar_customers AS 
-                WITH RECURSIVE AUX1(C1, C2) AS ( 
-                SELECT A.cust_id AS C1, 
-                       B.cust_id AS C2 
-                FROM Ratings AS A, Ratings AS B 
-                WHERE A.dish_id = B.dish_id 
+            CREATE VIEW similarCustomers AS
+            WITH RECURSIVE AUX1(C1, C2) AS (
+                SELECT 
+                    A.cust_id AS C1,
+                    B.cust_id AS C2
+                FROM Ratings AS A, Ratings AS B
+                WHERE A.dish_id = B.dish_id
+                  AND A.rating > 3
+                  AND B.rating > 3
+                UNION
+                SELECT 
+                    A.cust_id AS C1, 
+                    B.cust_id AS C2
+                FROM Ratings AS A, Ratings AS B, AUX1
+                WHERE A.cust_id = AUX1.C1
+                  AND B.cust_id != AUX1.C1
+                  AND B.cust_id != AUX1.C2
                   AND A.rating > 3 
-                  AND B.rating > 3 
-                UNION 
-                SELECT A.cust_id AS C1, B.cust_id AS C2 
-                FROM Ratings AS A, Ratings AS B, AUX1 
-                WHERE A.cust_id = AUX1.C1 AND 
-                      B.cust_id != AUX1.C1 AND 
-                      B.cust_id != AUX1.C2 AND 
-                      A.rating > 3 AND B.rating > 3 AND 
-                      A.dish_id = B.dish_id 
-                ) 
-                SELECT * FROM AUX1
+                  AND B.rating > 3
+                  AND A.dish_id = B.dish_id
+            )
+            SELECT * FROM AUX1
         """
         )
 
         conn.execute(
             """
-            CREATE VIEW monthly_orders AS 
-                    SELECT EXTRACT(MONTH FROM o.date) AS month, 
-                           EXTRACT(YEAR FROM o.date) AS year, 
-                           o.order_id, 
-                           o.delivery_fee, 
-                           SUM(od.amount * d.price) AS dishes_total 
-                    FROM Orders o 
-                    JOIN DishOrders od ON o.order_id = od.order_id 
-                    JOIN Dishes d ON od.dish_id = d.dish_id 
-                    GROUP BY month, year, o.order_id, o.delivery_fee
+            CREATE VIEW monthlyOrders AS
+            SELECT 
+                EXTRACT(MONTH FROM o.date) AS month,
+                EXTRACT(YEAR FROM o.date) AS year,
+                o.order_id,
+                o.delivery_fee,
+                SUM(od.amount * d.price) AS dishes_total
+            FROM Orders o
+            JOIN DishOrders od ON o.order_id = od.order_id
+            JOIN Dishes d ON od.dish_id = d.dish_id
+            GROUP BY month, year, o.order_id, o.delivery_fee
         """
         )
 
         conn.execute(
             """
-            CREATE VIEW monthly_profit AS 
-                    SELECT month, 
-                           year, 
-                           SUM(delivery_fee + dishes_total) AS monthly_profit 
-                    FROM monthly_orders 
-                    GROUP BY month, year 
-                    ORDER BY year, month
+            CREATE VIEW monthlyProfit AS
+            SELECT 
+                month,
+                year,
+                SUM(delivery_fee + dishes_total) AS monthly_profit
+            FROM monthlyOrders
+            GROUP BY month, year
+            ORDER BY year, month
         """
         )
 
@@ -227,12 +236,12 @@ def drop_tables() -> None:
     conn = None
     try:
         conn = Connector.DBConnector()
-        conn.execute("""DROP VIEW IF EXISTS monthly_profit""")
-        conn.execute("""DROP VIEW IF EXISTS monthly_orders""")
-        conn.execute("""DROP VIEW IF EXISTS similar_customers""")
-        conn.execute("""DROP VIEW IF EXISTS compared_prices""")
-        conn.execute("""DROP VIEW IF EXISTS sort_ratings_desc""")
-        conn.execute("""DROP VIEW IF EXISTS total_price_per_order""")
+        conn.execute("""DROP VIEW IF EXISTS monthlyProfit""")
+        conn.execute("""DROP VIEW IF EXISTS monthlyOrders""")
+        conn.execute("""DROP VIEW IF EXISTS similarCustomers""")
+        conn.execute("""DROP VIEW IF EXISTS comparedPrices""")
+        conn.execute("""DROP VIEW IF EXISTS sortRatingsDesc""")
+        conn.execute("""DROP VIEW IF EXISTS totalPricePerOrder""")
 
         conn.execute("""DROP TABLE IF EXISTS Ratings""")
         conn.execute("""DROP TABLE IF EXISTS DishOrders""")
@@ -260,8 +269,8 @@ def add_customer(customer: Customer) -> ReturnValue:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            INSERT INTO Customers(cust_id, full_name, phone, age)
-            VALUES({id}, {name}, {phone}, {age})
+            INSERT INTO Customers (cust_id, full_name, phone, age)
+            VALUES ({id}, {name}, {phone}, {age})
         """
         ).format(
             id=sql.Literal(customer.get_cust_id()),
@@ -297,8 +306,8 @@ def get_customer(customer_id: int) -> Customer:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            SELECT * 
-            FROM Customers 
+            SELECT *
+            FROM Customers
             WHERE cust_id = {id}
         """
         ).format(id=sql.Literal(customer_id))
@@ -359,8 +368,8 @@ def add_order(order: Order) -> ReturnValue:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            INSERT INTO Orders(order_id, date, delivery_fee, delivery_address)
-            VALUES({id}, {date_time}, {fee}, {address})
+            INSERT INTO Orders (order_id, date, delivery_fee, delivery_address)
+            VALUES ({id}, {date_time}, {fee}, {address})
         """
         ).format(
             id=sql.Literal(order.get_order_id()),
@@ -458,8 +467,8 @@ def add_dish(dish: Dish) -> ReturnValue:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            INSERT INTO Dishes(dish_id, name, price, is_active) 
-            VALUES({id}, {name}, {price}, {active})
+            INSERT INTO Dishes (dish_id, name, price, is_active) 
+            VALUES ({id}, {name}, {price}, {active})
         """
         ).format(
             id=sql.Literal(dish.get_dish_id()),
@@ -587,8 +596,8 @@ def customer_placed_order(customer_id: int, order_id: int) -> ReturnValue:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            INSERT INTO CustomerOrders(cust_id, order_id) 
-            VALUES({cust_id}, {order_id})
+            INSERT INTO CustomerOrders (cust_id, order_id) 
+            VALUES ({cust_id}, {order_id})
         """
         ).format(cust_id=sql.Literal(customer_id), order_id=sql.Literal(order_id))
 
@@ -615,7 +624,11 @@ def get_customer_that_placed_order(order_id: int) -> Customer:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-                SELECT CO.cust_id, C.full_name, C.phone, C.age 
+                SELECT 
+                    CO.cust_id, 
+                    C.full_name, 
+                    C.phone, 
+                    C.age 
                 FROM CustomerOrders CO 
                 JOIN Customers C ON CO.cust_id = C.cust_id 
                 WHERE CO.order_id = {id}"""
@@ -651,10 +664,12 @@ def order_contains_dish(order_id: int, dish_id: int, amount: int) -> ReturnValue
         query = sql.SQL(
             """
             INSERT INTO DishOrders (order_id, dish_id, amount, price) 
-            VALUES ({oid}, 
-                   {did}, 
-                   {amt}, 
-                   (SELECT price FROM Dishes WHERE dish_id = {did} AND is_active = true))
+            VALUES (
+                {oid}, 
+                {did}, 
+                {amt}, 
+                (SELECT price FROM Dishes WHERE dish_id = {did} AND is_active = true)
+            )
         """
         ).format(
             oid=sql.Literal(order_id), did=sql.Literal(dish_id), amt=sql.Literal(amount)
@@ -836,7 +851,7 @@ def get_order_total_price(order_id: int) -> float:
         query = sql.SQL(
             """
             SELECT total_price
-            FROM total_price_per_order 
+            FROM totalPricePerOrder 
             WHERE order_id = {o_id}
         """
         ).format(o_id=sql.Literal(order_id))
@@ -864,14 +879,16 @@ def get_customers_spent_max_avg_amount_money() -> List[int]:
         query = sql.SQL(
             """
             SELECT CO.cust_id 
-            FROM CustomerOrders CO, total_price_per_order TP 
-            WHERE CO.order_id = TP.order_id 
-            GROUP BY cust_id 
-            HAVING AVG(total_price) >= ALL (SELECT AVG(total_price) 
-                                          FROM CustomerOrders CO, total_price_per_order TP 
-                                          WHERE CO.order_id = TP.order_id 
-                                          GROUP BY cust_id) 
-            ORDER BY cust_id ASC
+            FROM CustomerOrders CO
+            JOIN totalPricePerOrder TP ON CO.order_id = TP.order_id 
+            GROUP BY CO.cust_id 
+            HAVING AVG(TP.total_price) >= ALL (
+                SELECT AVG(inner_tp.total_price) 
+                FROM CustomerOrders inner_co
+                JOIN totalPricePerOrder inner_tp ON inner_co.order_id = inner_tp.order_id 
+                GROUP BY inner_co.cust_id
+            ) 
+            ORDER BY CO.cust_id ASC
         """
         )
         _, result = conn.execute(query)
@@ -897,8 +914,9 @@ def get_most_ordered_dish_in_period(start: datetime, end: datetime) -> Dish:
         query = sql.SQL(
             """
             WITH DishAmounts AS (
-                SELECT od.dish_id,
-                       SUM(od.amount) AS total_amount
+                SELECT 
+                    od.dish_id,
+                    SUM(od.amount) AS total_amount
                 FROM DishOrders od
                 JOIN Orders o ON od.order_id = o.order_id
                 WHERE o.date >= {start} AND o.date <= {end}
@@ -947,11 +965,12 @@ def did_customer_order_top_rated_dishes(cust_id: int) -> bool:
         conn = Connector.DBConnector()
         query = sql.SQL(
             """
-            SELECT DISTINCT cust_id 
-            FROM CustomerOrders AS CO, DishOrders AS D, sort_ratings_desc AS SR 
-            WHERE CO.order_id = D.order_id 
-              AND D.dish_id = SR.dish_id 
-              AND CO.cust_id = {c_id}"""
+            SELECT DISTINCT CO.cust_id 
+            FROM CustomerOrders AS CO
+            JOIN DishOrders AS D ON CO.order_id = D.order_id
+            JOIN sortRatingsDesc AS SR ON D.dish_id = SR.dish_id
+            WHERE CO.cust_id = {c_id}
+        """
         ).format(c_id=sql.Literal(cust_id))
 
         rows_affected, _ = conn.execute(query)
@@ -978,19 +997,22 @@ def get_customers_rated_but_not_ordered() -> List[int]:
         query = sql.SQL(
             """
             SELECT DISTINCT C.cust_id 
-            FROM (Customers AS C JOIN Ratings AS R ON R.cust_id = C.cust_id),
-                 (SELECT D.dish_id, COALESCE(AVG(DR.rating), 3) AS avg_rating 
-                  FROM Ratings DR 
-                  RIGHT OUTER JOIN Dishes D ON D.dish_id = DR.dish_id 
-                  GROUP BY D.dish_id 
-                  ORDER BY avg_rating ASC, D.dish_id ASC
-                  LIMIT 5) AS RA 
-            WHERE R.dish_id = RA.dish_id 
-              AND R.rating < 3
+            FROM Customers AS C 
+            JOIN Ratings AS R ON R.cust_id = C.cust_id
+            JOIN (
+                SELECT D.dish_id, COALESCE(AVG(DR.rating), 3) AS avg_rating 
+                FROM Ratings DR 
+                RIGHT OUTER JOIN Dishes D ON D.dish_id = DR.dish_id 
+                GROUP BY D.dish_id 
+                ORDER BY avg_rating ASC, D.dish_id ASC
+                LIMIT 5
+            ) AS RA ON R.dish_id = RA.dish_id
+            WHERE R.rating < 3
               AND R.dish_id NOT IN (
                 SELECT D.dish_id 
-                FROM CustomerOrders AS CO, DishOrders AS D 
-                WHERE CO.order_id = D.order_id AND CO.cust_id = C.cust_id
+                FROM CustomerOrders AS CO
+                JOIN DishOrders AS D ON CO.order_id = D.order_id
+                WHERE CO.cust_id = C.cust_id
               )
             ORDER BY C.cust_id
         """
@@ -1021,10 +1043,24 @@ def get_non_worth_price_increase() -> List[int]:
             SELECT D.dish_id 
             FROM Dishes D 
             WHERE D.is_active = true 
-              AND (D.dish_id, D.price) IN (SELECT dish_id, price FROM compared_prices) 
-              AND (SELECT avg_price FROM compared_prices WHERE dish_id = D.dish_id AND price = D.price) < 
-                  (SELECT MAX(avg_price) FROM compared_prices WHERE dish_id = D.dish_id) 
-              AND (SELECT COUNT(*) FROM compared_prices WHERE dish_id = D.dish_id) >= 2 
+              AND (D.dish_id, D.price) IN (
+                  SELECT dish_id, price 
+                  FROM comparedPrices
+              ) 
+              AND (
+                  SELECT avg_price 
+                  FROM comparedPrices 
+                  WHERE dish_id = D.dish_id AND price = D.price
+              ) < (
+                  SELECT MAX(avg_price) 
+                  FROM comparedPrices 
+                  WHERE dish_id = D.dish_id
+              ) 
+              AND (
+                  SELECT COUNT(*) 
+                  FROM comparedPrices 
+                  WHERE dish_id = D.dish_id
+              ) >= 2 
             ORDER BY D.dish_id ASC
         """
         )
@@ -1053,25 +1089,36 @@ def get_cumulative_profit_per_month(year: int) -> List[Tuple[int, float]]:
             WITH RECURSIVE months(month_num) AS (
                 SELECT 1
                 UNION ALL
-                SELECT month_num + 1 FROM months WHERE month_num < 12
+                SELECT month_num + 1 
+                FROM months 
+                WHERE month_num < 12
             ),
             monthly_profits_for_year AS (
-                SELECT month, COALESCE(SUM(monthly_profit), 0) AS profit
-                FROM monthly_profit
+                SELECT 
+                    month, 
+                    COALESCE(SUM(monthly_profit), 0) AS profit
+                FROM monthlyProfit
                 WHERE year = {year}
                 GROUP BY month
             ),
             all_months AS (
-                SELECT m.month_num, COALESCE(mp.profit, 0) AS monthly_profit
+                SELECT 
+                    m.month_num, 
+                    COALESCE(mp.profit, 0) AS monthly_profit
                 FROM months m
                 LEFT JOIN monthly_profits_for_year mp ON m.month_num = mp.month
             ),
             cumulative_profits AS (
-                SELECT month_num,
-                       SUM(monthly_profit) OVER (ORDER BY month_num) AS cumulative_profit
+                SELECT 
+                    month_num,
+                    SUM(monthly_profit) OVER (ORDER BY month_num) AS cumulative_profit
                 FROM all_months
             )
-            SELECT month_num as month, cumulative_profit FROM cumulative_profits ORDER BY month DESC
+            SELECT 
+                month_num AS month, 
+                cumulative_profit 
+            FROM cumulative_profits 
+            ORDER BY month DESC
         """
         ).format(year=sql.Literal(year))
 
@@ -1098,7 +1145,7 @@ def get_potential_dish_recommendations(cust_id: int) -> List[int]:
         query = sql.SQL(
             """
             SELECT RA.dish_id AS rec 
-            FROM similar_customers AS SC 
+            FROM similarCustomers AS SC 
             JOIN Ratings AS RA ON (SC.C1 = {c_id} AND SC.C2 = RA.cust_id) 
             WHERE RA.rating > 3 
             EXCEPT (
